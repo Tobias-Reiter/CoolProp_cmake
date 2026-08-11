@@ -395,56 +395,7 @@ void ResidualHelmholtzGeneralizedExponential::all_deltaonly(const CoolPropDbl& t
 #if ENABLE_CATCH
 mcx::MultiComplex<double> ResidualHelmholtzGeneralizedExponential::one_mcx(const mcx::MultiComplex<double>& tau,
                                                                            const mcx::MultiComplex<double>& delta) const {
-    //throw CoolProp::NotImplementedError("Nope");
-    mcx::MultiComplex<double> sum00 = 0.0 * tau * delta;
-    auto ln_tau = log(tau);
-    auto ln_delta = log(delta);
-    const std::size_t N = elements.size();
-    for (std::size_t i = 0; i < N; ++i) {
-        const ResidualHelmholtzGeneralizedExponentialElement& el = elements[i];
-
-        mcx::MultiComplex<double> u = 0.0 * tau * delta;
-        if (delta_li_in_u) {
-            CoolPropDbl ci = el.c, l_double = el.l_double;
-            if (ValidNumber(l_double) && l_double > 0 && std::abs(ci) > DBL_EPSILON) {
-                const auto u_increment = -ci * pow(delta, l_double);
-                u += u_increment;
-            }
-        }
-        if (tau_mi_in_u) {
-            CoolPropDbl omegai = el.omega, m_double = el.m_double;
-            if (std::abs(m_double) > 0) {
-                const auto u_increment = -omegai * pow(tau, m_double);
-                u += u_increment;
-            }
-        }
-        if (eta1_in_u) {
-            CoolPropDbl eta1 = el.eta1, epsilon1 = el.epsilon1;
-            if (ValidNumber(eta1)) {
-                u += -eta1 * (delta - epsilon1);
-            }
-        }
-        if (eta2_in_u) {
-            CoolPropDbl eta2 = el.eta2, epsilon2 = el.epsilon2;
-            if (ValidNumber(eta2)) {
-                u += -eta2 * POW2(delta - epsilon2);
-            }
-        }
-        if (beta1_in_u) {
-            CoolPropDbl beta1 = el.beta1, gamma1 = el.gamma1;
-            if (ValidNumber(beta1)) {
-                u += -beta1 * (tau - gamma1);
-            }
-        }
-        if (beta2_in_u) {
-            CoolPropDbl beta2 = el.beta2, gamma2 = el.gamma2;
-            if (ValidNumber(beta2)) {
-                u += -beta2 * POW2(tau - gamma2);
-            }
-        }
-        sum00 += el.n * exp(el.t * ln_tau + el.d * ln_delta + u);
-    }
-    return sum00;
+    return base_templated(tau, delta);
 }
 #endif
 

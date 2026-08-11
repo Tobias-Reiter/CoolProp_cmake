@@ -113,6 +113,29 @@ endif()
 
 # ── Windows packaging helpers (optional) ──────────────────────────────────
 
+# teqp automatic-differentiation validation (testing only).  Download source
+# archives rather than adding either project to the build.  The validation
+# object target consumes only their headers, and this block is skipped unless
+# explicitly enabled.  Commit URLs keep both inputs immutable and avoid teqp's
+# unrelated recursive submodules.
+if(COOLPROP_ENABLE_TEQP_AD_VALIDATION)
+  CPMAddPackage(
+    NAME teqp
+    URL https://github.com/usnistgov/teqp/archive/5f62a6f515d517e39c3fb035c11a03524ffa3ad6.tar.gz
+    URL_HASH SHA256=23f89cc1fc431973b76e2f83362172498626009a7a19d287a81522298be5e57c
+    DOWNLOAD_ONLY YES
+  )
+  CPMAddPackage(
+    NAME autodiff
+    # Immutable head of the open, approved upstream PR "Add support for Eigen
+    # 5": https://github.com/autodiff/autodiff/pull/393. teqp's submodule
+    # revision predates Eigen 5's templated SingleRange API.
+    URL https://github.com/autodiff/autodiff/archive/35c36b77591d46550be60147b9e3c0f3e4218df5.tar.gz
+    URL_HASH SHA256=89d12b5a04c22991283302534709d319ab87efdba07ed4778d09bda523d117c1
+    DOWNLOAD_ONLY YES
+  )
+endif()
+
 if(COOLPROP_WINDOWS_PACKAGE)
   CPMAddPackage(
     NAME ExcelAddinInstaller

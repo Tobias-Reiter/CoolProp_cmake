@@ -65,8 +65,9 @@ jobs:
       uses: actions/cache@v6
       with:
         path: ${{ github.workspace }}/.cpm_cache
-        key: cpm-${{ runner.os }}-${{ hashFiles('cmake/dependencies.cmake') }}
+        key: cpm-teqp-${{ runner.os }}-${{ hashFiles('cmake/dependencies.cmake') }}
         restore-keys: |
+          cpm-teqp-${{ runner.os }}-
           cpm-${{ runner.os }}-
 
     - name: Set up ccache
@@ -96,10 +97,35 @@ jobs:
         # Create the build directory too
         mkdir build
 
-    - name: Configure CMake
+    - name: Configure CMake and verify teqp remains opt-in
       working-directory: ./build
       shell: bash
-      run: cmake -DCMAKE_BUILD_TYPE:STRING=$BUILD_TYPE -DCOOLPROP_SHARED_LIBRARY:BOOL=ON -DCOOLPROP_CATCH_MODULE:BOOL=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+      run: |
+        set -euo pipefail
+        cmake \
+          -DCMAKE_BUILD_TYPE:STRING="$BUILD_TYPE" \
+          -DCOOLPROP_SHARED_LIBRARY:BOOL=ON \
+          -DCOOLPROP_CATCH_MODULE:BOOL=ON \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          ..
+
+        if ! grep -Fxq \
+          'COOLPROP_ENABLE_TEQP_AD_VALIDATION:BOOL=OFF' \
+          CMakeCache.txt; then
+          echo "teqp AD validation must remain disabled by default"
+          exit 1
+        fi
+
+        if grep -Eiq \
+          '^(CPM_PACKAGE_(teqp|autodiff)[^:]*|CPM_(teqp|autodiff)_SOURCE|(teqp|autodiff)_SOURCE_DIR):' \
+          CMakeCache.txt; then
+          echo "teqp/autodiff packages were registered with validation OFF"
+          grep -Ei \
+            '^(CPM_PACKAGE_(teqp|autodiff)[^:]*|CPM_(teqp|autodiff)_SOURCE|(teqp|autodiff)_SOURCE_DIR):' \
+            CMakeCache.txt
+          exit 1
+        fi
 
     - name: Build
       working-directory: ./build
@@ -149,3 +175,16 @@ jobs:
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: |
         ./CatchTestRunner
+
+    - name: Build and run teqp AD validation
+      working-directory: ./build
+      shell: bash
+      run: |
+        set -euo pipefail
+        cmake -S .. -B . \
+          -DCOOLPROP_ENABLE_TEQP_AD_VALIDATION:BOOL=ON
+        cmake --build . \
+          --target CatchTestRunner \
+          --parallel 2 \
+          --config "$BUILD_TYPE"
+        ./CatchTestRunner "[teqp]" --reporter compact

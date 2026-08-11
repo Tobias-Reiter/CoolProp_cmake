@@ -6,6 +6,20 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(CheckIncludeFileCXX)
 
+# teqp is intentionally an opt-in validation dependency.  Declare this option
+# before loading dependencies so a normal CoolProp configure does not discover,
+# download, or compile any teqp/autodiff code.
+option(
+  COOLPROP_ENABLE_TEQP_AD_VALIDATION
+  "Build the test-only teqp automatic-differentiation validation"
+  OFF)
+
+if(COOLPROP_ENABLE_TEQP_AD_VALIDATION AND NOT COOLPROP_CATCH_MODULE)
+  message(
+    FATAL_ERROR
+      "COOLPROP_ENABLE_TEQP_AD_VALIDATION requires COOLPROP_CATCH_MODULE=ON")
+endif()
+
 # Dependency management via CPM.cmake (replaces git submodules).
 # Set CPM_SOURCE_CACHE (e.g. ~/.cache/CPM) to share downloads across worktrees.
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/CPM.cmake")
@@ -2397,9 +2411,39 @@ if(COOLPROP_CATCH_MODULE)
   list(APPEND APP_SOURCES
        "${CMAKE_CURRENT_SOURCE_DIR}/src/Tests/CoolProp-Tests-CBOR.cpp")
 
+  if(COOLPROP_ENABLE_TEQP_AD_VALIDATION)
+    # Compile the teqp-facing translation unit separately as C++20.  The
+    # regular Catch runner and every production CoolProp target remain C++17,
+    # and no teqp/autodiff include directory becomes part of CoolProp's public
+    # usage requirements.
+    add_library(CoolPropTeqpADValidation OBJECT
+                "${CMAKE_CURRENT_SOURCE_DIR}/src/Tests/CoolProp-Tests-TeqpAD.cpp")
+    set_target_properties(
+      CoolPropTeqpADValidation
+      PROPERTIES CXX_STANDARD 20
+                 CXX_STANDARD_REQUIRED YES
+                 CXX_EXTENSIONS OFF)
+    target_compile_definitions(CoolPropTeqpADValidation PRIVATE ENABLE_CATCH)
+    target_include_directories(
+      CoolPropTeqpADValidation
+      PRIVATE ${APP_INCLUDE_DIRS}
+              "${multicomplex_SOURCE_DIR}/multicomplex/include"
+              "${teqp_SOURCE_DIR}/include"
+              "${autodiff_SOURCE_DIR}")
+    target_link_libraries(CoolPropTeqpADValidation PRIVATE Catch2::Catch2)
+    if(MSVC)
+      target_compile_options(CoolPropTeqpADValidation PRIVATE /bigobj)
+    endif()
+  endif()
+
   # CATCH TEST, compile everything with catch and set test entry point
   add_executable(CatchTestRunner ${APP_SOURCES})
   add_dependencies(CatchTestRunner generate_headers)
+
+  if(COOLPROP_ENABLE_TEQP_AD_VALIDATION)
+    target_sources(CatchTestRunner
+                   PRIVATE $<TARGET_OBJECTS:CoolPropTeqpADValidation>)
+  endif()
 
   target_link_libraries(CatchTestRunner PRIVATE Catch2::Catch2WithMain)
   target_compile_definitions(CatchTestRunner PRIVATE ENABLE_CATCH)

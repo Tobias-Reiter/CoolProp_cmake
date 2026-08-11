@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <cstring>  // for std::memset, used below -- libstdc++ does not pull it in transitively
+#include <type_traits>
 #include <vector>
 #include "CoolProp/detail/tools.h"  // for CoolPropDbl
 //#include "Eigen/Core"
@@ -552,6 +554,60 @@ class ResidualHelmholtzGeneralizedExponential : public BaseHelmholtzTerm
 
         finished = true;
     };
+
+#if ENABLE_CATCH
+    /// Scalar-generic value evaluation used by independent derivative oracles.
+    ///
+    /// This is deliberately free of teqp types: ordinary CoolProp translation
+    /// units continue to compile as C++17, while a test-only adapter can
+    /// instantiate this expression with an automatic-differentiation scalar.
+    /// The logarithmic representation requires tau > 0 and delta > 0.
+    template <typename TauType, typename DeltaType>
+    auto base_templated(const TauType& tau, const DeltaType& delta) const {
+        using std::exp;
+        using std::log;
+        using std::pow;
+
+        using Scalar = std::common_type_t<std::decay_t<TauType>, std::decay_t<DeltaType>>;
+        Scalar sum = 0.0;
+        const auto log_tau = log(tau);
+        const auto log_delta = log(delta);
+
+        for (const auto& el : elements) {
+            Scalar u = 0.0;
+            if (delta_li_in_u) {
+                const CoolPropDbl ci = el.c;
+                const CoolPropDbl exponent = el.l_double;
+                if (ValidNumber(exponent) && exponent > 0 && std::abs(ci) > DBL_EPSILON) {
+                    u += -ci * pow(delta, exponent);
+                }
+            }
+            if (tau_mi_in_u) {
+                const CoolPropDbl omegai = el.omega;
+                const CoolPropDbl exponent = el.m_double;
+                if (std::abs(exponent) > 0) {
+                    u += -omegai * pow(tau, exponent);
+                }
+            }
+            if (eta1_in_u && ValidNumber(el.eta1)) {
+                u += -el.eta1 * (delta - el.epsilon1);
+            }
+            if (eta2_in_u && ValidNumber(el.eta2)) {
+                const auto offset = delta - el.epsilon2;
+                u += -el.eta2 * offset * offset;
+            }
+            if (beta1_in_u && ValidNumber(el.beta1)) {
+                u += -el.beta1 * (tau - el.gamma1);
+            }
+            if (beta2_in_u && ValidNumber(el.beta2)) {
+                const auto offset = tau - el.gamma2;
+                u += -el.beta2 * offset * offset;
+            }
+            sum += el.n * exp(el.t * log_tau + el.d * log_delta + u);
+        }
+        return sum;
+    }
+#endif
 
     void all(const CoolPropDbl& tau, const CoolPropDbl& delta, HelmholtzDerivatives& derivs) override;
     void all_deltaonly(const CoolPropDbl& tau, const CoolPropDbl& delta, HelmholtzDerivatives& derivs) override;
